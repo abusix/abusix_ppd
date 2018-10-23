@@ -1,0 +1,13 @@
+[Unit]
+Description=Abusix Postfix Policy Daemon
+After=network.target postfix.service
+
+[Service]
+Environment=
+Type=simple
+User=nobody
+ExecStart=/usr/bin/node /home/smf/git/abusix-ppd-reporter/index.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
