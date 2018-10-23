@@ -1,0 +1,15 @@
+{
+  "name": "abusix_ppd",
+  "version": "1.0.0",
+  "description": "Abusix Postfix Policy Daemon",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Steve Freegard <steve@abusix.com>",
+  "license": "GPLv3",
+  "dependencies": {
+    "byline": "^5.0.0",
+    "ini": "^1.3.5"
+  }
+}
