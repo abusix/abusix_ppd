@@ -3,18 +3,32 @@ Abusix Postfix Policy Daemon
 
 This is a Postfix Policy daemon designed to feed SMTP transaction data in real-time to a set of collectors over UDP and is designed to be as fast and as lightweight as possible.
 
-## Installation
+## Installation from source
 The policy daemon needs NodeJS >= 8 to be installed to function properly.
 `````
 cd /opt
 git clone https://gitlab.com/smfreegard/abusix_ppd.git
 cd abusix_ppd
 npm install
+# Modify abusix_ppd.service to reflect the installation path
+cp abusix_ppd.service /lib/systemd/system
+`````
+## Installation from pre-compiled nexe binaries
+
+For convience and to make deployment easier, you can find `abusix_ppd.x86` and `abusix_ppd.x64` files in the repository which are compiled with `nexe` and provide a bundled Node v12.14.0 LTS along with all required dependencies which should run on all versions of Linux.   Use the x86 version for 32-bit and x64 for 64-bit architectures.
+
+`````
+cd /opt
+git clone https://gitlab.com/smfreegard/abusix_ppd.git
+cd abusix_ppd
+cp abusix_ppd.x64 /usr/local/bin/abusix_ppd
+cp config.ini /etc/abusix_ppd.ini
+# Modify abusix_ppd.service to reflect the installation path
 cp abusix_ppd.service /lib/systemd/system
 `````
 
 ## Configuration
-The `config.ini` file is used to configure the daemon:
+The `config.ini` or `/etc/abusix_ppd.ini` file is used to configure the daemon:
 
 | Configuration |Default |Required | Description |
 |--|--|--|--|
@@ -25,7 +39,7 @@ The `config.ini` file is used to configure the daemon:
 
 ### Postfix Configuration
 
-Edit the Postfix `main.cf` file and add the following under `smtpd_sender_restrictions =` (or add this section if it does not already exist):
+Edit the Postfix `main.cf` file and add the following to the start of `smtpd_sender_restrictions =` (or add this section if it does not already exist):
 `````
 check_policy_service { inet:127.0.0.1:9998, timeout=1s, try_limit=1, default_action=DUNNO }
 `````
