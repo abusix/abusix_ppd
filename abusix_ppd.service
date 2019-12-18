@@ -6,7 +6,7 @@ After=network.target postfix.service
 Environment=
 Type=simple
 User=nobody
-ExecStart=/usr/bin/node /home/smf/git/abusix-ppd-reporter/index.js
+ExecStart=/usr/local/bin/abusix_ppd
 Restart=on-failure
 
 [Install]
