@@ -1,6 +1,6 @@
 {
   "name": "abusix_ppd",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Abusix Postfix Policy Daemon",
   "main": "index.js",
   "scripts": {
