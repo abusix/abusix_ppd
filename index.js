@@ -18,11 +18,20 @@ const DEBUG = process.env.DEBUG || false;
 var cfg;
 try {
     cfg = ini.parse(fs.readFileSync(path.join(__dirname, './config.ini'),'utf-8'));
-    if (DEBUG) console.log(JSON.stringify({cfg: cfg}, null, '\t'));
 }
 catch (e) {
-    console.error(`Unable to load configuration file: ${e.message}`);
-    process.exit(1);
+    try {
+        cfg = ini.parse(fs.readFileSync('/etc/abusix-ppd-reporter.ini', 'utf-8'));
+    }
+    catch (e2) {
+        console.error(`Unable to load configuration file: ${e2.message}${(e && e.message) ? ' ' + e.message : ''}`);
+        process.exit(1);
+    }
+}
+
+if (DEBUG) {
+    console.log(`Node version ${process.version} on ${process.platform}/${process.arch}`);
+    console.log(`config: ${JSON.stringify(cfg, null, '\t')}`);
 }
 
 // Check configuration before we start-up
@@ -35,7 +44,7 @@ if (!cfg.feed_dest || !cfg.feed_name || !cfg.feed_key) {
 }
 
 if (cluster.isMaster) {
-    process.title = "abusix_ppd (master)"
+    process.title = "abusix_ppd_reporter (master)"
     if (DEBUG) console.log(`master ${process.pid} is started`);
 
     // Fork workers.
