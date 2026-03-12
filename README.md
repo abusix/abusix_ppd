@@ -33,7 +33,7 @@ The `config.ini` or `/etc/abusix_ppd.ini` file is used to configure the daemon:
 | Configuration |Default |Required | Description |
 |--|--|--|--|
 |listen_port|9998|N|This is the TCP port the Policy daemon listens on.
-|feed_name||Y|This identifies the feed to the collector.
+|feed_name||Y|This identifies the feed to the collector. (Abusix `feed-id`)
 |feed_key||Y|This authenticates the feed data against the `feed_name` to the collector
 |feed_dest||Y|The host or host:port where the data should be sent.  If the port is not specified then it defaults to port 12211.  Multiple destinations can be specified using comma, semicolon or whitespace to delimit the hosts.  If multiple hosts are specified then the data is sent to them all.
 
