@@ -1,73 +1,99 @@
-Abusix Postfix Policy Daemon
--------------------------------------
+# Abusix Postfix Policy Daemon
 
-This is a Postfix Policy daemon designed to feed SMTP transaction data in real-time to a set of collectors over UDP and is designed to be as fast and as lightweight as possible.
+A Postfix policy daemon that feeds SMTP transaction data in real time to Abusix collectors over UDP. It always answers Postfix with `DUNNO`, so it never changes how mail is accepted, and it is designed to be as fast and as lightweight as possible.
 
-## Installation from source
-The policy daemon needs NodeJS >= 8 to be installed to function properly.
-`````
-cd /opt
-git clone https://gitlab.com/smfreegard/abusix_ppd.git
-cd abusix_ppd
-npm install
-# Modify abusix_ppd.service to reflect the installation path
-cp abusix_ppd.service /lib/systemd/system
-`````
+## How it runs
+
+The daemon runs on the mail server next to Postfix, as the systemd service in `abusix_ppd.service` (user `nobody`, restarted on failure). Postfix connects to it over TCP on `listen_port` for each SMTP transaction, through the `check_policy_service` setting below.
+
+The master process forks one worker per CPU and replaces any worker that exits. For each transaction a worker sends one UDP datagram to every host in `feed_dest`. The datagram holds newline-separated fields: `feed_name`, a timestamp, the server port, the client address, the client's reverse DNS name (or `client_name`), the HELO name, whether ESMTP, TLS and SASL were used, and the sender's domain. An MD5 digest of those fields plus `feed_key` is appended, so the collector can authenticate the feed.
+
 ## Installation from pre-compiled nexe binaries
 
-For convience and to make deployment easier, you can find `abusix_ppd.x86` and `abusix_ppd.x64` files in the repository which are compiled with `nexe` and provide a bundled Node v12.14.0 LTS along with all required dependencies which should run on all versions of Linux.   Use the x86 version for 32-bit and x64 for 64-bit architectures.
+For convenience, the repository contains `abusix_ppd.x86` and `abusix_ppd.x64`, compiled with `nexe`. They bundle Node v12.14.0 and all dependencies and should run on any Linux. Use the x86 version on 32-bit and the x64 version on 64-bit systems.
 
-`````
+```sh
 cd /opt
-git clone https://gitlab.com/smfreegard/abusix_ppd.git
+git clone https://github.com/abusix/abusix_ppd.git
 cd abusix_ppd
 cp abusix_ppd.x64 /usr/local/bin/abusix_ppd
 cp config.ini /etc/abusix_ppd.ini
-# Modify abusix_ppd.service to reflect the installation path
+# Edit /etc/abusix_ppd.ini (see Configuration)
 cp abusix_ppd.service /lib/systemd/system
-`````
+```
+
+The binaries were built in December 2019 from version 1.0.1. They do not include the 1.0.2 change, which only updates the `ini` dependency.
+
+## Installation from source
+
+Running from source needs Node.js >= 8.
+
+```sh
+cd /opt
+git clone https://github.com/abusix/abusix_ppd.git
+cd abusix_ppd
+npm install
+# Edit config.ini (see Configuration)
+# In abusix_ppd.service, switch ExecStart to the commented-out node line and fix the path
+cp abusix_ppd.service /lib/systemd/system
+```
+
+## Build and deploy
+
+There is no CI and no build script. The nexe binaries are committed to the repository, and the repo does not record the `nexe` command used to build them. Changes go to `master` through pull requests.
+
+## Local development
+
+There is no test suite. Run the daemon in the foreground with debug logging, which prints the loaded configuration, every connection and every datagram sent:
+
+```sh
+npm install
+DEBUG=1 node index.js
+```
 
 ## Configuration
-The `config.ini` or `/etc/abusix_ppd.ini` file is used to configure the daemon:
 
-| Configuration |Default |Required | Description |
+The daemon reads `config.ini` from its own directory first, and falls back to a file in `/etc` when that is missing. The fallback is `/etc/abusix_ppd.ini` for the pre-compiled binaries and `/etc/abusix-ppd-reporter.ini` when running `index.js` from source.
+
+| Setting | Default | Required | Description |
 |--|--|--|--|
-|listen_port|9998|N|This is the TCP port the Policy daemon listens on.
-|feed_name||Y|This identifies the feed to the collector. (Abusix `feed-id`)
-|feed_key||Y|This authenticates the feed data against the `feed_name` to the collector
-|feed_dest||Y|The host or host:port where the data should be sent.  If the port is not specified then it defaults to port 12211.  Multiple destinations can be specified using comma, semicolon or whitespace to delimit the hosts.  If multiple hosts are specified then the data is sent to them all.
+| `listen_port` | 9998 | N | The TCP port the policy daemon listens on. |
+| `feed_name` | | Y | Identifies the feed to the collector (the Abusix `feed-id`). |
+| `feed_key` | | Y | Authenticates the feed data for `feed_name` to the collector. |
+| `feed_dest` | | Y | The host or `host:port` the data is sent to; the port defaults to 12211. Separate multiple destinations with commas, semicolons or spaces; the data is sent to all of them. |
 
-### Postfix Configuration
+The daemon refuses to start when `feed_name`, `feed_key` or `feed_dest` is missing. Setting the environment variable `DEBUG` to any non-empty value turns on debug logging.
 
-Edit the Postfix `main.cf` file and add the following to the start of `smtpd_sender_restrictions =` (or add this section if it does not already exist):
-`````
+### Postfix configuration
+
+Edit the Postfix `main.cf` file and add the following to the start of `smtpd_sender_restrictions =` (or add that setting if it does not exist):
+
+```
 check_policy_service { inet:127.0.0.1:9998, timeout=1s, try_limit=1, default_action=DUNNO }
-`````
+```
 
-These settings ensure that Postfix will not be affected at all should there be any problem or if the policy daemon is not running.
+These settings ensure that Postfix is not affected if there is any problem or the policy daemon is not running.
 
-For Postfix < 3.0 this line may need to be modified as different settings per policy client were not introduced until this version.
+Postfix before 3.0 may need a different line, since per-policy-client settings were introduced in 3.0.
 
-Postfix needs to be restarted once `main.cf` has been edited.
+Restart Postfix after editing `main.cf`.
 
 ## Running
 
-`systemctl start abusix_ppd` will start the daemon and `systemctl enable abusix_ppd` will ensure that it starts on boot.
+`systemctl start abusix_ppd` starts the daemon and `systemctl enable abusix_ppd` starts it on boot.
 
-By default the systemd service file runs the daemon as user `nobody`.
+The daemon can be monitored with `ps axf`, as each process title shows its current state. `total` is the total number of connections Postfix has made to the worker and `active` is the number of open connections:
 
-Once started - it will fork a worker process per-CPU and it can be monitored by running `ps axf` as the process title is modified to show it's current state.   `total` is the total number connections that Postfix has made to the process and `active` is the number of active connections from Postfix:
-`````
+```
 5402 ?        Ssl    0:00 abusix_ppd (master)
  5408 ?        Sl     0:00  \_ abusix_ppd (worker) total=0 active=0
  5413 ?        Sl     0:00  \_ abusix_ppd (worker) total=0 active=0
  5414 ?        Sl     0:00  \_ abusix_ppd (worker) total=1 active=0
  5419 ?        Sl     0:00  \_ abusix_ppd (worker) total=0 active=0
- 5420 ?        Sl     0:00  \_ abusix_ppd (worker) total=0 active=0
- 5430 ?        Sl     0:00  \_ abusix_ppd (worker) total=0 active=0
- 5435 ?        Sl     0:00  \_ abusix_ppd (worker) total=0 active=0
- 5446 ?        Sl     0:00  \_ abusix_ppd (worker) total=0 active=0
-`````
+```
+
+When running from source, the master process is titled `abusix_ppd_reporter (master)`.
 
 ## License
-This software is licensed under the GPLv3, please see the `LICENSE` file in the same directory.   Please send any modifications or improvements as a Pull Request.
+
+This software is licensed under the GPLv3; see the `LICENSE` file. Please send any modifications or improvements as a pull request.
