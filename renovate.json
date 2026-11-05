@@ -1,4 +1,41 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>abusix/.github//configs/renovate/default"]
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":preserveSemverRanges",
+    ":separateMajorReleases",
+    "helpers:pinGitHubActionDigests",
+    "security:minimumReleaseAgeNpm"
+  ],
+  "timezone": "UTC",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "labels": ["dependencies"],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["vulnerability", "p1"],
+    "schedule": ["at any time"],
+    "prConcurrentLimit": 0,
+    "prHourlyLimit": 0,
+    "rangeStrategy": "update-lockfile",
+    "automerge": false
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["* 0-5 * * 1"],
+    "automerge": false
+  },
+  "postUpdateOptions": ["npmInstallTwice"],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["major-update"]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "GitHub Actions"
+    }
+  ]
 }
