@@ -43,9 +43,25 @@ if (!cfg.feed_dest || !cfg.feed_name || !cfg.feed_key) {
     process.exit(1);
 }
 
+// Address the policy server binds to. Postfix normally runs on the same host,
+// so only listen on loopback unless the operator explicitly configures otherwise.
+const listen_host = (cfg.listen_host && String(cfg.listen_host).trim()) || '127.0.0.1';
+const listen_port = cfg.listen_port || 9998;
+
+// Delay before replacing a worker that exited, so a worker that keeps crashing
+// does not turn into a tight fork loop.
+const REFORK_DELAY_MS = 1000;
+
 if (cluster.isMaster) {
     process.title = "abusix_ppd_reporter (master)"
     if (DEBUG) console.log(`master ${process.pid} is started`);
+
+    var listening_logged = false;
+    cluster.on('listening', (worker, address) => {
+        if (listening_logged) return;
+        listening_logged = true;
+        console.log(`listening on ${address.address}:${address.port}`);
+    });
 
     // Fork workers.
     for (let i = 0; i < numCPUs; i++) {
@@ -58,7 +74,7 @@ if (cluster.isMaster) {
 
     cluster.on('exit', (worker, code, signal) => {
         console.log(`worker ${worker.id} with PID ${worker.process.pid} died`);
-        cluster.fork();
+        setTimeout(() => cluster.fork(), REFORK_DELAY_MS);
     });
 
     return;
@@ -105,7 +121,7 @@ const server = net.createServer((c) => {
                 attrs = {};
             }
             // Tell Postfix to move on
-            c.write('action=DUNNO\n\n', { encoding: 'ascii' });
+            c.write('action=DUNNO\n\n', 'ascii');
         }
         else {
             // Store attributes
@@ -135,26 +151,30 @@ server.on('error', (err) => {
     console.log(`server error: ${err.message}`);
 });
 
-server.listen(cfg.listen_port || 9998, () => {
+server.listen(listen_port, listen_host, () => {
     if (DEBUG) console.log('opened server on ', server.address());
 });
 
 exports.send_data = function (attrs) {
     if (DEBUG) console.log(`received attributes: ${JSON.stringify(attrs, null, '\t')}`);
+    // A request may omit sender (e.g. when the policy check is not in
+    // smtpd_sender_restrictions); treat it as the null sender.
+    var sender = (typeof attrs.sender === 'string') ? attrs.sender : '';
     var data = [ 
         cfg.feed_name, 
         epoch,
         attrs.server_port || '',
         attrs.client_address,
-        // Use the client_reverse_name if we can, otherwise use client_name
-        ((attrs.client_reverse_name !== undefined) 
-            ? (attrs.client_reverse_name !== 'unknown' ? attrs.client_reverse_name : attrs.client_name)
-            : attrs.client_name),
+        // Always use client_name: Postfix only sets it when the reverse DNS name
+        // also resolves forward to client_address (otherwise it is 'unknown').
+        // reverse_client_name is not forward-confirmed and could be set to any
+        // value by whoever controls the client's reverse DNS zone.
+        attrs.client_name,
         attrs.helo_name,
         ((attrs.protocol_name !== undefined) ? ((attrs.protocol_name === 'ESMTP') ? 'Y' : 'N') : ''),
         ((attrs.encryption_keysize !== undefined) ? ((attrs.encryption_keysize > 0) ? 'Y' : 'N') : ''),
         ((attrs.sasl_method !== undefined) ? (attrs.sasl_method ? 'Y' : 'N') : ''),
-        ((attrs.sender.indexOf('@') !== -1) ? attrs.sender.substr(attrs.sender.indexOf('@')+1) : attrs.sender),
+        ((sender.indexOf('@') !== -1) ? sender.substr(sender.indexOf('@')+1) : sender),
         // Extended JSON field; not currently used
         '',
     ];

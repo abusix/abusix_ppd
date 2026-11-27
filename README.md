@@ -4,9 +4,9 @@ A Postfix policy daemon that feeds SMTP transaction data in real time to Abusix 
 
 ## How it runs
 
-The daemon runs on the mail server next to Postfix, as the systemd service in `abusix_ppd.service` (user `nobody`, restarted on failure). Postfix connects to it over TCP on `listen_port` for each SMTP transaction, through the `check_policy_service` setting below.
+The daemon runs on the mail server next to Postfix, as the systemd service in `abusix_ppd.service` (user `nobody`, restarted on failure). Postfix connects to it over TCP on `listen_host`:`listen_port` (loopback by default) for each SMTP transaction, through the `check_policy_service` setting below.
 
-The master process forks one worker per CPU and replaces any worker that exits. For each transaction a worker sends one UDP datagram to every host in `feed_dest`. The datagram holds newline-separated fields: `feed_name`, a timestamp, the server port, the client address, the client's reverse DNS name (or `client_name`), the HELO name, whether ESMTP, TLS and SASL were used, and the sender's domain. An MD5 digest of those fields plus `feed_key` is appended, so the collector can authenticate the feed.
+The master process forks one worker per CPU and replaces any worker that exits. For each transaction a worker sends one UDP datagram to every host in `feed_dest`. The datagram holds newline-separated fields: `feed_name`, a timestamp, the server port, the client address, the client's verified hostname (Postfix `client_name`), the HELO name, whether ESMTP, TLS and SASL were used, and the sender's domain. An MD5 digest of those fields plus `feed_key` is appended, so the collector can authenticate the feed.
 
 ## Installation from pre-compiled nexe binaries
 
@@ -22,7 +22,7 @@ cp config.ini /etc/abusix_ppd.ini
 cp abusix_ppd.service /lib/systemd/system
 ```
 
-The binaries were built in December 2019 from version 1.0.1. They do not include the 1.0.2 change, which only updates the `ini` dependency.
+The binaries were built in December 2019 from version 1.0.1. They do not include the 1.0.2 change, which only updates the `ini` dependency, or any later changes: in particular they listen on all interfaces and ignore `listen_host` (see Security).
 
 ## Installation from source
 
@@ -44,7 +44,14 @@ There is no CI and no build script. The nexe binaries are committed to the repos
 
 ## Local development
 
-There is no test suite. Run the daemon in the foreground with debug logging, which prints the loaded configuration, every connection and every datagram sent:
+Tests use the built-in Node.js test runner (Node.js >= 18) and start the daemon against a temporary configuration:
+
+```sh
+npm install
+npm test
+```
+
+Run the daemon in the foreground with debug logging, which prints the loaded configuration, every connection and every datagram sent:
 
 ```sh
 npm install
@@ -57,6 +64,7 @@ The daemon reads `config.ini` from its own directory first, and falls back to a 
 
 | Setting | Default | Required | Description |
 |--|--|--|--|
+| `listen_host` | 127.0.0.1 | N | The address the policy daemon listens on. Only change this if Postfix runs on a different host, and then restrict access to the port (see Security). |
 | `listen_port` | 9998 | N | The TCP port the policy daemon listens on. |
 | `feed_name` | | Y | Identifies the feed to the collector (the Abusix `feed-id`). |
 | `feed_key` | | Y | Authenticates the feed data for `feed_name` to the collector. |
@@ -77,6 +85,16 @@ These settings ensure that Postfix is not affected if there is any problem or th
 Postfix before 3.0 may need a different line, since per-policy-client settings were introduced in 3.0.
 
 Restart Postfix after editing `main.cf`.
+
+## Security
+
+The policy port accepts SMTP transaction attributes from anyone who can connect to it and forwards them to Abusix under your `feed_name`. Keep it reachable by Postfix only:
+
+- Leave `listen_host` at its default `127.0.0.1` (or `::1`) when Postfix runs on the same host, which is the normal setup.
+- If Postfix runs on another host, set `listen_host` to a private address and use a firewall so that only the Postfix host can reach `listen_port`.
+- Never expose the policy port to the internet.
+
+The daemon logs the address it listens on at start-up. The pre-compiled binaries in this repository predate `listen_host` and listen on all interfaces; if you use them, block `listen_port` from all hosts except Postfix with a firewall.
 
 ## Running
 
